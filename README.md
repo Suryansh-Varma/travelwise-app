@@ -1,0 +1,2 @@
+# travelwise-app
+TravelWise is a smart, budget-aware, and safety-conscious travel itinerary planner. Users can input their source, destination, available budget, and timeline to receive an optimized, multi-modal travel plan with alerts on route safety, layover suggestions, and budget breakdowns. It's built using the MERN stack (MongoDB, Express, React/Next.js, Node.js) to deliver a smooth, full-stack experience that simulates real-world travel scenarios with intelligent decision-making.
