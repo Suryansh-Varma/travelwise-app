@@ -1,12 +1,12 @@
-// src/app/dashboard/trips/page.tsx
+// src/app/dashboard/saved-trips/page.tsx
 "use client";
 
 import Head from "next/head";
-import React, { useEffect, useState, useRef } from "react"; // Import useRef
+import React, { useEffect, useState } from "react";
 import { supabase } from "../../../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
-// Define interfaces for type safety
+// Re-use interfaces for type safety
 interface TripSegment {
   mode: string;
   source: string;
@@ -39,59 +39,50 @@ interface Trip {
   updatedAt?: string;
 }
 
-export default function TripsPage() {
+export default function SavedTripsPage() {
   const router = useRouter();
   const [userID, setUserID] = useState<string | null>(null);
-  const [displayTrips, setDisplayTrips] = useState<Trip[]>([]);
+  const [savedTrips, setSavedTrips] = useState<Trip[]>([]); // State for ALL saved trips
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Use a ref to track if generated trips have been processed for this mount
-  const hasProcessedGeneratedTrips = useRef(false);
-
   useEffect(() => {
-    const loadRecentTrips = async () => {
+    const fetchSavedTrips = async () => {
       setLoading(true);
       setError(null);
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const uid = user?.id ?? null;
       setUserID(uid);
 
-      // Only attempt to process generated trips ONCE per component mount
-      if (!hasProcessedGeneratedTrips.current) {
-        const storedGeneratedTrips = localStorage.getItem('lastGeneratedTrips');
-
-        if (storedGeneratedTrips) {
-          try {
-            const parsedTrips: Trip[] = JSON.parse(storedGeneratedTrips);
-            if (Array.isArray(parsedTrips) && parsedTrips.length > 0) {
-              setDisplayTrips(parsedTrips);
-              console.log("Displaying recently generated trips:", parsedTrips);
-              localStorage.removeItem('lastGeneratedTrips'); // Clear after display
-              hasProcessedGeneratedTrips.current = true; // Mark as processed for this mount
-            } else {
-              console.log("localStorage had data, but it was empty or invalid. Clearing.");
-              localStorage.removeItem('lastGeneratedTrips'); // Clear bad data
-              setDisplayTrips([]); // Ensure empty state
-            }
-          } catch (e: any) {
-            console.error("Failed to parse stored generated trips from localStorage:", e);
-            setError("Failed to load recent trips data.");
-            localStorage.removeItem('lastGeneratedTrips'); // Clear potentially corrupt data
-            setDisplayTrips([]); // Ensure empty state on error
+      if (uid) {
+        try {
+          // This API endpoint fetches ALL trips for the user
+          const res = await fetch(`http://localhost:5000/api/trips?userID=${uid}`);
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
           }
-        } else {
-          console.log("No recently generated trips found in localStorage.");
-          setDisplayTrips([]); // Ensure it's empty if nothing was in localStorage
+          const data: Trip[] = await res.json();
+          // Sort by creation date if you want the most recent first
+          data.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+          setSavedTrips(data);
+        } catch (error: any) {
+          console.error("Failed to fetch saved trips:", error);
+          setError(error.message || "Could not load your saved trips.");
         }
+      } else {
+        // If no user, redirect to login or show appropriate message
+        // router.push('/login');
       }
       setLoading(false);
     };
 
-    loadRecentTrips();
-  }, []); // Empty dependency array: runs only once after initial render
+    fetchSavedTrips();
+  }, [userID]); // Re-fetch when userID changes
 
+  // Helper functions for formatting (copy-pasted from TripsPage)
   const formatDate = (dateString: string) => {
     const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' };
     try { return new Date(dateString).toLocaleDateString(undefined, options); } catch { return dateString; }
@@ -104,10 +95,11 @@ export default function TripsPage() {
 
   const getPlanKey = (trip: Trip, idx: number) => trip._id || `${trip.from}-${trip.to}-${trip.startDate}-${idx}`;
 
+
   return (
     <>
       <Head>
-        <title>TravelWise Trips</title>
+        <title>TravelWise Saved Trips</title>
         <link rel="icon" href="data:image/x-icon;base64," />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
@@ -132,8 +124,8 @@ export default function TripsPage() {
             <div className="flex flex-1 justify-end gap-8">
               <div className="flex items-center gap-9">
                 <a className="text-white text-sm font-medium" href="/explore">Explore</a>
-                <a className="text-white text-sm font-medium" href="/trips">Recent Trips</a> {/* Link to THIS page */}
-                <a className="text-white text-sm font-medium" href="/dashboard/saved-trips">Saved Trips</a> {/* Link to NEW Saved Trips Page */}
+                <a className="text-white text-sm font-medium" href="/trips">Recent Trips</a>
+                <a className="text-white text-sm font-medium" href="/dashboard/saved-trips">Saved Trips</a>
                 <a className="text-white text-sm font-medium" href="/updates">Updates</a>
               </div>
               <button className="flex items-center justify-center rounded-xl h-10 bg-[#2d2447] text-white text-sm font-bold px-2.5">
@@ -155,16 +147,16 @@ export default function TripsPage() {
           <div className="px-40 flex flex-1 justify-center py-5">
             <div className="layout-content-container flex flex-col max-w-[960px] flex-1">
               {loading ? (
-                <p className="text-white text-lg">Loading recent trips...</p>
+                <p className="text-white text-lg">Loading saved trips...</p>
               ) : error ? (
-                <p className="text-red-400 text-lg">Error: {error}</p>
-              ) : displayTrips.length === 0 ? (
-                <p className="text-white text-lg">No recently generated trips found. <a href="/dashboard/plan-trip" className="text-[#4c19e5] hover:underline">Plan a new trip!</a></p>
+                 <p className="text-red-400 text-lg">Error: {error}</p>
+              ) : savedTrips.length === 0 ? (
+                <p className="text-white text-lg">No saved trips found for this user.</p>
               ) : (
-                displayTrips.map((trip, idx) => (
+                savedTrips.map((trip, idx) => (
                   <div key={getPlanKey(trip, idx)} className="mb-8 p-6 rounded-lg bg-[#211d35] shadow-lg">
                     <h2 className="text-white text-2xl font-bold mb-4">
-                      Plan {idx + 1}: {trip.from} to {trip.to}
+                      Trip {idx + 1}: {trip.from} to {trip.to}
                     </h2>
 
                     <div className="flex flex-wrap justify-between gap-3 pb-4 border-b border-solid border-b-[#403465] mb-4">
