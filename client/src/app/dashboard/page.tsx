@@ -162,10 +162,10 @@ export default function PlanTripPage() {
             )}
 
             {/* From */}
-            <InputSection label="From" placeholder="City or airport" value={from} onChange={e => setFrom(e.target.value)} />
+            <InputSection label="From" placeholder="" value={from} onChange={e => setFrom(e.target.value)} />
 
             {/* To */}
-            <InputSection label="To" placeholder="City or airport" value={to} onChange={e => setTo(e.target.value)} />
+            <InputSection label="To" placeholder="" value={to} onChange={e => setTo(e.target.value)} />
 
             {/* Start Date - Changed type to 'date' for proper input behavior */}
             <InputSection label="Start Date" placeholder="Select date" icon="calendar" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
