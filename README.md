@@ -101,7 +101,7 @@ Open a Pull Request to the main repository.
 Please ensure your code follows the project's coding standards and that you update tests when appropriate.
 
 License
-This project is licensed under the MIT License — see the LICENSE file for details.
+This project is licensed under the Apache License — see the LICENSE file for details.
 
 Contact
 Project Link: https://github.com/Suryansh-Varma/travelwise-app
