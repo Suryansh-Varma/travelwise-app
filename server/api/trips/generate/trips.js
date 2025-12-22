@@ -76,16 +76,38 @@ Example of the expected JSON ARRAY structure:
 Ensure all date-time strings within the 'plan' array are in ISO 8601 format including timezone offset, and 'startDate'/'deadline' are YYYY-MM-DD. Be realistic with costs and durations for Indian travel.
 `;
 
-        const geminiResponse = await axios.post(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent',
-            {
-                contents: [{ parts: [{ text: geminiPrompt }] }],
-            },
-            {
-                headers: { 'Content-Type': 'application/json' },
-                params: { key: process.env.GEMINI_API_KEY },
+        // Prefer using Google service account (short-lived access token). If not available, fall back to API key.
+        const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
+        const geminiBody = { contents: [{ parts: [{ text: geminiPrompt }] }] };
+
+        // Build axios config with either Authorization header (Bearer) or API key param
+        const axiosConfig = { headers: { 'Content-Type': 'application/json' } };
+
+        try {
+            // Attempt to obtain Application Default Credentials access token
+            const { GoogleAuth } = require('google-auth-library');
+            const auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
+            const client = await auth.getClient();
+            const tokenResponse = await client.getAccessToken();
+            const accessToken = tokenResponse && (tokenResponse.token || tokenResponse);
+            if (accessToken) {
+                axiosConfig.headers.Authorization = `Bearer ${accessToken}`;
+            } else if (process.env.GEMINI_API_KEY) {
+                axiosConfig.params = { key: process.env.GEMINI_API_KEY };
+            } else {
+                throw new Error('No access token obtained and no GEMINI_API_KEY configured.');
             }
-        );
+        } catch (authErr) {
+            // If google-auth-library is not configured or fails, fall back to API key if present
+            if (process.env.GEMINI_API_KEY) {
+                axiosConfig.params = { key: process.env.GEMINI_API_KEY };
+            } else {
+                console.error('Auth error obtaining Google access token:', authErr.message);
+                throw new Error('Could not obtain Google access token and GEMINI_API_KEY is not set.');
+            }
+        }
+
+        const geminiResponse = await axios.post(geminiUrl, geminiBody, axiosConfig);
 
         let parsedTripPlans; // This will now be an array of plan objects
         const geminiOutput = geminiResponse.data.candidates?.[0]?.content?.parts?.[0]?.text;

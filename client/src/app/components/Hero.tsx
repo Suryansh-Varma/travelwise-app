@@ -8,27 +8,59 @@ export default function Hero() {
   const handleClick = () => {
     router.push('/login');
   };
-
   return (
-    <div className="flex justify-center items-center px-6 py-10 min-h-[480px] bg-cover bg-center bg-no-repeat rounded-xl"
-      style={{
-        backgroundImage: `
-          linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.4)),
-          url("https://lh3.googleusercontent.com/aida-public/AB6AXuCaKLwrMZhfCjUiKm41-_pXIMvxSspQwfh-hhZh3EsHld13eVUvAWAEgtEP-fUsAbf4hhCNzSDncgiq_7FeDHJLKKVmZidGImbEW_1AT6-0EOkGW0vQTkWfDyJK-gTjYQne7UQ647q4_-EEUszDzSCT5hFQ9YjlQnhmx24DgcoQvPO9wNdGi-B6xWc6G1mpdO5iaWgXlbVwLk_5BhEH7xSmC1jBJ5WmYjOWDoSa9WKPfyxyShrPfcTBNwIIKbMArkUjk_e7lKQHus6f")
-        `
-      }}
-    >
-      <div className="flex flex-col items-center text-center gap-4 max-w-[90%]">
-        <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl">
-          Plan smarter. Travel wiser.
-        </h1>
-        <h2 className="text-base font-normal text-white/80">
-          Smart AI itineraries for budget-friendly travel.
-        </h2>
-        <button onClick={handleClick} className="mt-6 px-6 py-3 rounded-xl bg-white/10 text-white text-sm font-medium backdrop-blur border border-white/20 hover:border-white hover:bg-white/20 transition duration-200 shadow-sm hover:shadow-md">
-  Start Planning
-</button>
+    <section className="px-6 py-12">
+      <div className="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+        {/* Left column: content */}
+        <div className="md:col-span-7">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight text-site animate-fade-up">
+            Plan smarter. Travel wiser.
+          </h1>
+          <p className="mt-4 text-base text-muted max-w-xl animate-fade-up animate-delay-150">
+            Generate AI-assisted itineraries tailored to your budget and timeline — quick, reliable, and travel-ready.
+          </p>
+
+          <div className="mt-8 flex flex-col sm:flex-row gap-3 animate-fade-up animate-delay-250">
+            <button
+              onClick={handleClick}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold shadow-sm btn-primary text-white hover:brightness-90 transition"
+            >
+              Start Planning
+            </button>
+
+            <button
+              onClick={() => router.push('/trips')}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-medium border bg-card text-site hover:shadow-md transition"
+            >
+              Explore Trips
+            </button>
+          </div>
+
+          <div className="mt-6 text-sm text-muted">
+            No account needed to browse. Sign up to save itineraries and sync across devices.
+          </div>
+        </div>
+
+        {/* Right column: image/card */}
+        <div className="md:col-span-5">
+          <div className="rounded-xl overflow-hidden shadow-lg bg-card animate-fade-in animate-delay-250">
+            <img
+              src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1400&auto=format&fit=crop&ixlib=rb-4.0.3&s=3d52d7b4a9b6d2f6f7f6b7c6a3e2d1f0"
+              alt="Travel destination preview"
+              className="w-full h-64 object-cover sm:h-80 md:h-72 lg:h-80"
+            />
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-site">7-day Bali Explorer</div>
+                  <div className="text-sm text-muted">Flexible, budget-friendly itinerary</div>
+                </div>
+                <div className="text-sm font-medium text-primary">$399</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

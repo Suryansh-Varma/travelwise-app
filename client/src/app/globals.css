@@ -1,5 +1,3 @@
-/* ✅ 1. Google Fonts must be at the top */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=Noto+Sans:wght@400;500;700;900&display=swap');
 @import "tailwindcss";
 @tailwind utilities;
 
@@ -7,19 +5,70 @@ html {
   font-family: 'Plus Jakarta Sans', 'Noto Sans', sans-serif;
 }
 
+/* Light theme variables (default) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #F7FBFF;
+  --card: #FFFFFF;
+  --fg: #0F172A;
+  --muted: #6B7280;
+  --primary: #06B6D4;
 }
 
+/* Dark theme — applied when `dark` class is present on <html> */
+html.dark {
+  --bg: #0b1220;
+  --card: #0f1724;
+  --fg: #E6EEF8;
+  --muted: #9CA3AF;
+  --primary: #06B6D4;
+}
+
+/* Respect system preference if user hasn't chosen a theme */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not(.theme-set) {
+    --bg: #0b1220;
+    --card: #0f1724;
+    --fg: #E6EEF8;
+    --muted: #9CA3AF;
+    --primary: #06B6D4;
   }
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: var(--bg);
+  color: var(--fg);
+  transition: background-color 180ms linear, color 180ms linear;
 }
+
+/* Utility token helpers (so tailwind classes can reference colors via styles) */
+.bg-site { background-color: var(--bg); }
+.text-site { color: var(--fg); }
+.bg-card { background-color: var(--card); }
+.text-muted { color: var(--muted); }
+.btn-primary { background-color: var(--primary); }
+/* Accent helpers */
+.text-primary { color: var(--primary); }
+.border-primary { border-color: var(--primary); }
+
+/* Entrance animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-up {
+  animation: fadeUp 420ms cubic-bezier(.2,.9,.2,1) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 380ms ease-out both;
+}
+
+.animate-delay-150 { animation-delay: 150ms; }
+.animate-delay-250 { animation-delay: 250ms; }
+.animate-delay-350 { animation-delay: 350ms; }

@@ -1,122 +1,139 @@
 // app/(auth)/login/page.tsx
-'use client';
+"use client";
 import Link from "next/link";
-import Image from "next/image";
 import React from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { signIn } from "../../lib/auth-client";
 import { useRouter } from "next/navigation";
+import Toast from "../components/Toast";
+import { supabase } from "../../../lib/supabaseClient";
 export default function LoginPage() {
-  const router = useRouter(); 
-  const [email, setEmail] = React.useState('')
-  const [password, setPassword] = React.useState('')
-  const [loading, setLoading] = React.useState(false)
-  const [errorMsg, setErrorMsg] = React.useState('')
+  const router = useRouter();
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [rememberMe, setRememberMe] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [errorMsg, setErrorMsg] = React.useState("");
+  const [toast, setToast] = React.useState<null | { type: "error" | "success" | "info"; message: string }>(null);
   const [userId, setUserId] = React.useState<string | null>(null);
 
+  // better-auth will handle sessions via its hooks; skipping supabase session checks
   React.useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id ?? null);
-    };
-    fetchUser();
+    // no-op: placeholder if you want to read session initially via useSession()
   }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setErrorMsg('')
-    setLoading(true)
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      setErrorMsg(error.message)
-    } else {
-      router.push('/dashboard') 
+    e.preventDefault();
+    setErrorMsg("");
+    setLoading(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const resp = await fetch(`${API_URL}/api/auth/sign-in/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, remember: rememberMe }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = data?.error || 'Invalid credentials';
+        setErrorMsg(msg);
+        setToast({ type: 'error', message: msg });
+        setLoading(false);
+        return;
+      }
+      // store sessionToken locally so client can call /api/auth/me
+      if (data?.sessionToken) {
+        try { localStorage.setItem('sessionToken', data.sessionToken); } catch (e) {}
+      }
+      setToast({ type: 'success', message: 'Signed in. Redirecting…' });
+      setTimeout(() => router.push('/dashboard'), 300);
+    } catch (e: any) {
+      const msg = e?.message || 'Unexpected error during sign-in.';
+      setErrorMsg(msg);
+      setToast({ type: 'error', message: msg });
+      setLoading(false);
     }
-
-    setLoading(false)
-  }
+  };
 
   const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: 'http://localhost:3000/dashboard', // your post-login route
-      },
-    })
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: "http://localhost:3000/dashboard",
+        },
+      });
 
-    if (error) {
-      setErrorMsg(error.message)
+      if (error) {
+        setErrorMsg(error.message);
+        setToast({ type: "error", message: error.message });
+      }
+    } catch (e: any) {
+      const msg = e?.message || "OAuth sign-in failed.";
+      setErrorMsg(msg);
+      setToast({ type: "error", message: msg });
     }
-  }
+  };
+
   return (
-    <main className="min-h-screen bg-[#151122] text-white font-['Plus Jakarta Sans','Noto Sans',sans-serif]">
-      <header className="flex items-center justify-between border-b border-[#2d2447] px-10 py-3">
-        <div className="flex items-center gap-4">
-
-        <Image
-  src="/assets/logo.png"
-  alt="Logo"
-  width={16}
-  height={16}
-  className="w-10 h-10 rounded-2xl"
-/>
-
-          <h2 className="text-lg font-bold">TravelWise</h2>
-        </div>
-        <nav className="flex items-center gap-9">
-          <Link href="#" className="text-sm font-medium">Trips</Link>
-          <Link href="#" className="text-sm font-medium">Explore</Link>
-          <Link href="#" className="text-sm font-medium">Saved</Link>
-        </nav>
-        <div className="flex gap-3 items-center">
-          <button className="rounded-xl bg-[#2d2447] h-10 px-4 text-sm font-bold">Help</button>
-          <div
-            className="rounded-full w-10 h-10 bg-cover bg-center"
-            style={{
-              backgroundImage:
-                "url('https://lh3.googleusercontent.com/aida-public/AB6AXuBTv3-9FXOcOP0c922ZuTHdFmEJp5gjXttOLw9xhBcAkOkC5LUXd6prw8fANB3hZI8MckDHCsAH40AoSRTlaD8yN8FIL8lPolZoEgAJ4jG5q1Ou80xl0F5r0oWV1h4A_aBCB5viRpRweG6ZySlkIcM43D1NmM6O1nJEW_qlcAVCOaE24uxCyDQJWnwCWlAw_R0NNbmINkBWjzh_yyF9C_-LmfTWD-qlEisbifvIbZA2f4xjSojcv5s9UrCwez1H8L-c2cHwYdYRBItS')",
-            }}
-          />
-        </div>
-      </header>
+    <main className="min-h-screen bg-site text-site">
+      {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
       <section className="flex justify-center px-4 py-10">
-        <div className="max-w-md w-full">
+        <div className="max-w-md w-full animate-fade-up">
+          {errorMsg && <p className="text-red-400 text-center mb-3">{errorMsg}</p>}
           <h2 className="text-2xl font-bold text-center mb-6">Welcome back</h2>
           <form className="space-y-4" onSubmit={handleLogin}>
             <div>
               <label className="block text-base font-medium mb-2">Email</label>
               <input
-              value={email}
+                value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 type="email"
                 placeholder="Email"
-                className="w-full h-14 rounded-xl bg-[#2d2447] p-4 text-white placeholder:text-[#a093c8] focus:outline-none"
+                className="w-full h-14 rounded-xl bg-card p-4 text-site placeholder:text-muted focus:outline-none"
               />
             </div>
             <div>
               <label className="block text-base font-medium mb-2">Password</label>
-              <input 
-               value={password}
-          onChange={e => setPassword(e.target.value)}
-                type="password"
-                placeholder="Password"
-                className="w-full h-14 rounded-xl bg-[#2d2447] p-4 text-white placeholder:text-[#a093c8] focus:outline-none"
-              />
+              <div className="relative">
+                <input
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Password"
+                  className="w-full h-14 rounded-xl bg-card p-4 text-site placeholder:text-muted focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
             <button
               type="submit"
-              className="w-full h-10 bg-[#4c19e5] text-sm font-bold rounded-xl mt-2"disabled={loading}> {loading ? 'Logging in...' : 'Login'}
+              className="w-full h-10 btn-primary text-sm font-bold rounded-xl mt-2 text-white"
+              disabled={loading}
+            >
+              {loading ? "Logging in..." : "Login"}
             </button>
-            <p className="text-[#a093c8] text-center text-sm mt-3 underline">
+            <div className="flex items-center justify-between mt-2">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+                Remember me
+              </label>
+              <Link href="/forgot-password" className="text-sm underline">Forgot?</Link>
+            </div>
+            <p className="text-muted text-center text-sm mt-3 underline">
               Don't have an account? <Link href="/signup">Sign up</Link>
             </p>
             <div className="flex gap-3 mt-4">
-              <button onClick={handleGoogleLogin} className="flex-1 h-10 rounded-xl bg-[#2d2447] font-bold text-sm">Continue with Google</button>
-             
+              <button onClick={handleGoogleLogin} type="button" className="flex-1 h-10 rounded-xl bg-card font-bold text-sm text-site">
+                Continue with Google
+              </button>
             </div>
           </form>
         </div>
