@@ -25,7 +25,10 @@ interface TripSegment {
   source: string;
   destination: string;
   cost: number;
-  durationHrs: number;
+  durationHrs?: number;
+  bufferMins?: number;
+  bufferNote?: string;
+  distanceKm?: number;
 }
 
 interface Trip {
@@ -35,15 +38,20 @@ interface Trip {
   startDate: string;
   deadline: string;
   budget: number;
+
   plan_name?: string;
   plan_rationale?: string;
+
   itinerary: ItineraryDay[];
   plan: TripSegment[];
+
+  total_cost_accommodation_activities?: number;
+  totalCost: number;
+  budgetRemaining?: number;
+
   warnings: string[];
   userID: string;
-  totalCost: number;
   createdAt?: string;
-  budgetRemaining?: number;
 }
 
 export default function TripsPage() {

@@ -7,20 +7,15 @@ const TripSchema = new mongoose.Schema({
   deadline: Date,
   budget: Number,
   userID: String,
+
   plan_name: String,
-  plan_rationale: String, // Maps to 'rationale' in Gemini output
-  
+  plan_rationale: String,
+
   itinerary: [{
     day: Number,
     date: String,
-    theme: String,      // Added to match latest Gemini output
-    activities: [
-  {
-    description: String,
-    est_cost: Number,
-    notes: String
-  }
-],
+    theme: String,
+    activities: [String],
     accommodation: {
       name: String,
       location: String,
@@ -29,13 +24,27 @@ const TripSchema = new mongoose.Schema({
     }
   }],
 
-  // Logistics
-  travelSelection: { outboundCost: Number, returnCost: Number, outboundId: String, returnId: String },
-  budgetRemaining: Number,
-  sideLocations: [{ name: String, days: Number, budget: Number }],
-  plan: [mongoose.Schema.Types.Mixed], // Flexible array for transport legs
+  total_cost_accommodation_activities: Number,
+
+  travelSelection: {
+    outboundCost: Number,
+    returnCost: Number,
+    outboundId: String,
+    returnId: String
+  },
+
+  sideLocations: [{
+    name: String,
+    days: Number,
+    budget: Number
+  }],
+
+  plan: [mongoose.Schema.Types.Mixed],
   warnings: [String],
-  totalCost: Number
+
+  totalCost: Number,
+  budgetRemaining: Number
+
 }, { timestamps: true });
 
 module.exports = mongoose.model('Trip', TripSchema);
