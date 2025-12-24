@@ -1,28 +1,31 @@
-// src/app/dashboard/trips/page.tsx
 "use client";
 
 import Head from "next/head";
-import React, { useEffect, useState, useRef } from "react"; // Import useRef
-import { supabase } from "../../../../lib/supabaseClient";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-// Header is provided by the root layout — don't render it again here
 
-// Define interfaces for type safety
+// --- INTERFACES ---
+interface Accommodation {
+  name: string;
+  location?: string;
+  estimated_cost_inr: number;
+  booking_link: string;
+}
+
+interface ItineraryDay {
+  day: number;
+  date: string;
+  theme: string;
+  activities: string[];
+  accommodation?: Accommodation | null;
+}
+
 interface TripSegment {
   mode: string;
   source: string;
   destination: string;
-  serviceNumber: string | null;
-  departureTime: string;
-  arrivalTime: string;
   cost: number;
   durationHrs: number;
-  layover: string | null;
-  bufferMins: number | null;
-  bufferNote: string | null;
-  availability: string;
-  warnings: string[] | null;
-  distanceKm?: number;
 }
 
 interface Trip {
@@ -32,198 +35,229 @@ interface Trip {
   startDate: string;
   deadline: string;
   budget: number;
+  plan_name?: string;
+  plan_rationale?: string;
+  itinerary: ItineraryDay[];
   plan: TripSegment[];
   warnings: string[];
   userID: string;
   totalCost: number;
   createdAt?: string;
-  updatedAt?: string;
+  budgetRemaining?: number;
 }
 
 export default function TripsPage() {
   const router = useRouter();
-  const [userID, setUserID] = useState<string | null>(null);
   const [displayTrips, setDisplayTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Use a ref to track if generated trips have been processed for this mount
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const hasProcessedGeneratedTrips = useRef(false);
 
   useEffect(() => {
-    const loadRecentTrips = async () => {
+    const loadCurrentSessionTrips = async () => {
       setLoading(true);
-      setError(null);
+      try {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const token = localStorage.getItem('sessionToken');
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      const uid = user?.id ?? null;
-      setUserID(uid);
+        // 1. Authenticate
+        const meRes = await fetch(`${API_URL}/api/auth/me`, { headers, credentials: 'include' });
+        if (!meRes.ok) { router.push('/login'); return; }
+        const meJson = await meRes.json();
+        const uid = meJson?.user?.id;
 
-      // Only attempt to process generated trips ONCE per component mount
-      if (!hasProcessedGeneratedTrips.current) {
-        const storedGeneratedTrips = localStorage.getItem('lastGeneratedTrips');
-
-        if (storedGeneratedTrips) {
-          try {
-            const parsedTrips: Trip[] = JSON.parse(storedGeneratedTrips);
-            if (Array.isArray(parsedTrips) && parsedTrips.length > 0) {
-              setDisplayTrips(parsedTrips);
-              console.log("Displaying recently generated trips:", parsedTrips);
-              localStorage.removeItem('lastGeneratedTrips'); // Clear after display
-              hasProcessedGeneratedTrips.current = true; // Mark as processed for this mount
-            } else {
-              console.log("localStorage had data, but it was empty or invalid. Clearing.");
-              localStorage.removeItem('lastGeneratedTrips'); // Clear bad data
-              setDisplayTrips([]); // Ensure empty state
-            }
-          } catch (e: any) {
-            console.error("Failed to parse stored generated trips from localStorage:", e);
-            setError("Failed to load recent trips data.");
-            localStorage.removeItem('lastGeneratedTrips'); // Clear potentially corrupt data
-            setDisplayTrips([]); // Ensure empty state on error
-          }
-        } else {
-          console.log("No recently generated trips found in localStorage.");
-          setDisplayTrips([]); // Ensure it's empty if nothing was in localStorage
+        // 2. Priority: Show fresh trips from LocalStorage
+        const stored = localStorage.getItem('lastGeneratedTrips');
+        if (stored && !hasProcessedGeneratedTrips.current) {
+          const local: Trip[] = JSON.parse(stored);
+          setDisplayTrips(local);
+          hasProcessedGeneratedTrips.current = true;
+          setLoading(false);
+          return; // STOP HERE - Don't load history
         }
+
+        // 3. Fallback: Fetch ONLY the latest batch from Backend
+        const backendRes = await fetch(`${API_URL}/api/trips?userID=${uid}`, { headers, credentials: 'include' });
+        if (backendRes.ok) {
+          const allSavedTrips: Trip[] = await backendRes.json();
+          
+          if (allSavedTrips.length > 0) {
+            // Sort by newest first
+            allSavedTrips.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+            
+            // Filter: Only show trips created in the same "batch" (within 30 seconds of the newest trip)
+            const newestTripTime = new Date(allSavedTrips[0].createdAt!).getTime();
+            const currentBatch = allSavedTrips.filter(trip => {
+              const tripTime = new Date(trip.createdAt!).getTime();
+              return (newestTripTime - tripTime) < 30000; // 30 second window
+            });
+            
+            setDisplayTrips(currentBatch);
+          }
+        }
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
-    loadRecentTrips();
-  }, []); // Empty dependency array: runs only once after initial render
+    loadCurrentSessionTrips();
+  }, [router]);
+
+  const handleDelete = async (tripId: string) => {
+    if (!confirm("Remove this option?")) return;
+    setIsDeleting(tripId);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const token = localStorage.getItem('sessionToken');
+      const res = await fetch(`${API_URL}/api/trips/${tripId}`, { 
+        method: 'DELETE', 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      if (res.ok) setDisplayTrips(prev => prev.filter(t => t._id !== tripId));
+    } catch (err) {
+      alert("Delete failed");
+    } finally {
+      setIsDeleting(null);
+    }
+  };
 
   const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-    try { return new Date(dateString).toLocaleDateString(undefined, options); } catch { return dateString; }
+    return new Date(dateString).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
-
-  const formatTime = (timeString: string) => {
-    const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
-    try { const date = new Date(timeString); if (isNaN(date.getTime())) return timeString; return date.toLocaleTimeString(undefined, options); } catch { return timeString; }
-  };
-
-  const getPlanKey = (trip: Trip, idx: number) => trip._id || `${trip.from}-${trip.to}-${trip.startDate}-${idx}`;
 
   return (
     <>
-      <Head>
-        <title>TravelWise Trips</title>
-        <link rel="icon" href="data:image/x-icon;base64," />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?display=swap&family=Noto+Sans:wght@400;500;700;900&family=Plus+Jakarta+Sans:wght@400;500;700;800"
-        />
-        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" />
-      </Head>
+      <Head><title>Current Plan - TravelWise</title></Head>
+      <div className="min-h-screen bg-site p-6 text-site">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-black">Generated Trip Options</h1>
+            <button 
+              onClick={() => {
+                localStorage.removeItem('lastGeneratedTrips');
+                router.push('/dashboard');
+              }}
+              className="bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-xl font-bold text-sm transition"
+            >
+              + Plan New Trip
+            </button>
+          </div>
 
-      <div className="relative flex min-h-screen flex-col bg-site overflow-x-hidden">
-        <div className="layout-container flex flex-col h-full grow">
-          {/* Header removed: rendered in app layout.tsx */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <div className="animate-spin size-10 border-4 border-primary border-t-transparent rounded-full"></div>
+              <p className="animate-pulse font-medium">Fetching the latest plans...</p>
+            </div>
+          ) : error ? (
+            <div className="p-4 bg-red-500/10 border border-red-500 rounded-xl text-red-500">{error}</div>
+          ) : displayTrips.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="text-muted mb-4">No recent trips found.</p>
+              <button onClick={() => router.push('/dashboard')} className="text-primary font-bold hover:underline">Go to Dashboard</button>
+            </div>
+          ) : (
+            displayTrips.map((trip, idx) => (
+              <div key={trip._id || idx} className="mb-12 p-6 md:p-10 bg-card rounded-[2rem] shadow-2xl border border-white/5 relative">
+                
+                {/* Delete Icon */}
+                <button 
+                  onClick={() => trip._id && handleDelete(trip._id)}
+                  disabled={isDeleting === trip._id}
+                  className="absolute top-6 right-6 p-2 text-muted hover:text-red-400 transition"
+                >
+                  {isDeleting === trip._id ? "..." : "🗑️"}
+                </button>
 
-          <div className="px-6 md:px-40 flex flex-1 justify-center py-8">
-            <div className="layout-content-container flex flex-col max-w-[960px] flex-1">
-              {loading ? (
-                <p className="text-site text-lg">Loading recent trips...</p>
-              ) : error ? (
-                <p className="text-red-400 text-lg">Error: {error}</p>
-              ) : displayTrips.length === 0 ? (
-                <p className="text-site text-lg">No recently generated trips found. <a href="/dashboard/plan-trip" className="text-primary hover:underline">Plan a new trip!</a></p>
-              ) : (
-                displayTrips.map((trip, idx) => (
-                  <div key={getPlanKey(trip, idx)} className="mb-8 p-6 rounded-lg bg-card shadow-lg animate-fade-up" style={{ animationDelay: `${idx * 80}ms` }}>
-                    <h2 className="text-site text-2xl font-bold mb-4">
-                      Plan {idx + 1}: {trip.from} to {trip.to}
-                    </h2>
+                {/* Header */}
+                <div className="mb-8">
+                  <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase rounded-full mb-2">
+                    Option {idx + 1}
+                  </span>
+                  <h2 className="text-3xl font-black mb-2">{trip.plan_name || `${trip.from} to ${trip.to}`}</h2>
+                  {trip.plan_rationale && <p className="text-muted italic text-sm border-l-2 border-primary/40 pl-4">"{trip.plan_rationale}"</p>}
+                </div>
 
-                    <div className="flex flex-wrap justify-between gap-3 pb-4 border-b mb-4" style={{ borderColor: 'var(--primary)', opacity: 0.12 }}>
-                      <div className="flex flex-col gap-2">
-                        <p className="text-muted text-sm">
-                          Planned from: <span className="font-semibold text-site">{formatDate(trip.startDate)}</span> to <span className="font-semibold text-site">{formatDate(trip.deadline)}</span>
-                        </p>
-                        <p className="text-muted text-sm">
-                          Original Budget: ₹{trip.budget} | Estimated Cost: ₹{trip.totalCost?.toFixed(2)}
-                          {trip.totalCost > trip.budget && (
-                            <span className="text-red-400 ml-2">(Exceeds Budget!)</span>
-                          )}
-                        </p>
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                  <div className="bg-site/30 p-4 rounded-2xl text-center">
+                    <p className="text-[10px] text-muted uppercase font-bold">Est. Cost</p>
+                    <p className={`text-lg font-black ${trip.totalCost > trip.budget ? 'text-red-400' : 'text-green-400'}`}>₹{trip.totalCost}</p>
+                  </div>
+                  <div className="bg-site/30 p-4 rounded-2xl text-center">
+                    <p className="text-[10px] text-muted uppercase font-bold">Daily Budget</p>
+                    <p className="text-lg font-black">₹{(trip.budget / 5).toFixed(0)}</p>
+                  </div>
+                  <div className="bg-site/30 p-4 rounded-2xl text-center md:col-span-2">
+                    <p className="text-[10px] text-muted uppercase font-bold">Dates</p>
+                    <p className="text-sm font-black">{formatDate(trip.startDate)} - {formatDate(trip.deadline)}</p>
+                  </div>
+                </div>
+
+                {/* Itinerary Timeline */}
+                <div className="relative space-y-10 before:absolute before:inset-0 before:ml-5 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-primary before:via-primary/50 before:to-transparent">
+                  {trip.itinerary?.map((day) => (
+                    <div key={day.day} className="relative pl-12">
+                      <div className="absolute left-3 top-1 size-4 bg-primary rounded-full border-4 border-card z-10"></div>
+                      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-3">
+                        <h4 className="text-xl font-bold">Day {day.day}: {day.theme}</h4>
+                        <span className="text-xs font-medium text-muted">{formatDate(day.date)}</span>
                       </div>
+                      
+                      <ul className="space-y-2 mb-6">
+                        {day.activities.map((act, i) => (
+                          <li key={i} className="text-muted text-sm flex gap-2">
+                            <span className="text-primary">•</span> {act}
+                          </li>
+                        ))}
+                      </ul>
+
+                      {day.accommodation && (
+                        <div className="flex flex-col sm:flex-row justify-between items-center p-4 bg-site/40 rounded-2xl border border-white/5 gap-4">
+                          <div className="text-center sm:text-left">
+                            <p className="text-[10px] font-bold text-primary uppercase mb-1">Recommended Stay</p>
+                            <p className="font-bold text-sm">{day.accommodation.name}</p>
+                          </div>
+                          <a 
+                            href={day.accommodation.booking_link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="w-full sm:w-auto px-6 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:scale-105 transition"
+                          >
+                            Book @ ₹{day.accommodation.estimated_cost_inr}
+                          </a>
+                        </div>
+                      )}
                     </div>
+                  ))}
+                </div>
 
-                    {trip.warnings && trip.warnings.length > 0 && (
-                      <div className="bg-yellow-800 bg-opacity-30 rounded-lg p-3 mb-4">
-                        <p className="text-yellow-300 text-sm font-semibold mb-1">Warnings for this Plan:</p>
-                        <ul className="list-disc list-inside text-yellow-200 text-sm">
-                          {trip.warnings.map((warning, wIdx) => (
-                            <li key={wIdx}>{warning}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <h3 className="text-site text-xl font-semibold mb-4 border-b pb-2" style={{ borderColor: 'var(--primary)', opacity: 0.12 }}>Itinerary Details:</h3>
-                    {trip.plan.length > 0 ? (
-                      <div className="relative pl-6" style={{ borderLeft: '2px dashed var(--primary)', opacity: 0.9 }}>
-                        {trip.plan.map((segment, segIdx) => (
-                          <div key={segIdx} className="mb-6 relative">
-                            <div className="absolute left-[-11px] top-0 size-5 rounded-full" style={{ backgroundColor: 'var(--primary)', border: '2px solid var(--bg)' }}></div>
-                            <div className="bg-card rounded-lg p-4 shadow-md">
-                              <p className="text-site text-base font-semibold mb-1">
-                                {segment.mode}: {segment.source} to {segment.destination}
-                              </p>
-                              {segment.serviceNumber && (
-                                <p className="text-muted text-sm">Service: {segment.serviceNumber}</p>
-                              )}
-                              <p className="text-muted text-sm">
-                                <span className="font-medium text-site">Departure:</span> {formatDate(segment.departureTime)} {formatTime(segment.departureTime)}
-                              </p>
-                              <p className="text-muted text-sm">
-                                <span className="font-medium text-site">Arrival:</span> {formatDate(segment.arrivalTime)} {formatTime(segment.arrivalTime)}
-                              </p>
-                              <p className="text-muted text-sm">
-                                Duration: {segment.durationHrs?.toFixed(2)} hours | Cost: ₹{segment.cost?.toFixed(2)}
-                              </p>
-                              {segment.layover && (
-                                <p className="text-muted text-sm">Layover: {segment.layover} minutes</p>
-                              )}
-                              {segment.bufferMins && (
-                                <p className="text-muted text-sm">Buffer: {segment.bufferMins} mins ({segment.bufferNote})</p>
-                              )}
-                              {segment.availability && (
-                                <p className="text-muted text-sm">Availability: {segment.availability}</p>
-                              )}
-                              {segment.warnings && segment.warnings.length > 0 && (
-                                <div className="mt-2 text-red-300 text-xs">
-                                  <p className="font-medium">Segment Warnings:</p>
-                                  <ul className="list-disc list-inside">
-                                    {segment.warnings.map((warn, wIdx) => (
-                                      <li key={wIdx}>{warn}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </div>
+                {/* Transport Accordion */}
+                {trip.plan.length > 0 && (
+                  <div className="mt-10 pt-6 border-t border-white/5">
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer list-none text-muted font-bold text-xs uppercase tracking-widest hover:text-primary transition">
+                        Logistics & Transport
+                        <span className="group-open:rotate-180 transition-transform">▼</span>
+                      </summary>
+                      <div className="mt-4 grid gap-3">
+                        {trip.plan.map((seg, i) => (
+                          <div key={i} className="p-4 bg-site/20 rounded-xl flex justify-between items-center text-sm">
+                            <span><span className="font-bold">{seg.mode}</span>: {seg.source} → {seg.destination}</span>
+                            <span className="font-mono text-primary font-bold">₹{seg.cost}</span>
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-muted text-base">No detailed plan available for this trip.</p>
-                    )}
-
-                    <div className="flex px-4 py-3 justify-between mt-4">
-                      <button className="flex items-center justify-center rounded-xl h-10 px-4 bg-card text-site text-sm font-bold shadow-sm">
-                        Edit Trip
-                      </button>
-                      <button className="flex items-center justify-center rounded-xl h-10 px-4 btn-primary text-white text-sm font-bold shadow-md">
-                        Start Over
-                      </button>
-                    </div>
+                    </details>
                   </div>
-                ))
-              )}
-            </div>
-          </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </div>
     </>

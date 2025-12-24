@@ -36,6 +36,18 @@ interface Trip {
   totalCost: number;
   createdAt?: string;
   updatedAt?: string;
+  travelSelection?: {
+    outboundId?: string;
+    returnId?: string;
+    outboundCost?: number;
+    returnCost?: number;
+  };
+  budgetRemaining?: number;
+  sideLocations?: Array<{
+    name: string;
+    days: number;
+    budget?: number;
+  }>;
 }
 
 export default function SavedTripsPage() {
@@ -149,8 +161,34 @@ export default function SavedTripsPage() {
                             <span className="text-red-400 ml-2">(Exceeds Budget!)</span>
                           )}
                         </p>
+                        {trip.budgetRemaining !== undefined && trip.budgetRemaining !== null && (
+                          <p className="text-muted text-sm">
+                            Remaining Budget: ₹{trip.budgetRemaining.toFixed(2)}
+                          </p>
+                        )}
+                        {trip.travelSelection && (trip.travelSelection.outboundCost || trip.travelSelection.returnCost) && (
+                          <p className="text-muted text-sm">
+                            Travel Costs: Outbound ₹{trip.travelSelection.outboundCost?.toFixed(2) || '0'} | Return ₹{trip.travelSelection.returnCost?.toFixed(2) || '0'}
+                          </p>
+                        )}
                       </div>
                     </div>
+
+                    {trip.sideLocations && trip.sideLocations.length > 0 && (
+                      <div className="bg-blue-800 bg-opacity-30 rounded-lg p-3 mb-4">
+                        <p className="text-blue-300 text-sm font-semibold mb-2">Side Locations / Multi-stop Destinations:</p>
+                        <ul className="list-disc list-inside text-blue-200 text-sm space-y-1">
+                          {trip.sideLocations.map((location, locIdx) => (
+                            <li key={locIdx}>
+                              {location.name} — {location.days} day(s)
+                              {location.budget !== undefined && location.budget > 0 && (
+                                <span className="ml-2">(Budget: ₹{location.budget.toFixed(2)})</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
                     {trip.warnings && trip.warnings.length > 0 && (
                       <div className="bg-yellow-800 bg-opacity-30 rounded-lg p-3 mb-4">

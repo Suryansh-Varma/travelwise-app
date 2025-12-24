@@ -31,6 +31,15 @@ export default function PlanTripPage() {
   const [avoidNightTravel, setAvoidNightTravel] = useState(false);
   const [includeLayovers, setIncludeLayovers] = useState(false);
   const [error, setError] = useState<string | null>(null); // State for displaying errors
+  const [remainingBudget, setRemainingBudget] = useState<number | null>(null);
+  const [outboundOptions, setOutboundOptions] = useState<any[]>([]);
+  const [returnOptions, setReturnOptions] = useState<any[]>([]);
+  const [selectedOutbound, setSelectedOutbound] = useState<string | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<string | null>(null);
+  const [initialBudgetNumber, setInitialBudgetNumber] = useState<number | null>(null);
+  const [outboundCost, setOutboundCost] = useState<number | null>(null);
+  const [returnCost, setReturnCost] = useState<number | null>(null);
+  const [sideLocations, setSideLocations] = useState<Array<{name: string; days: number; budget?: number}>>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -88,6 +97,12 @@ export default function PlanTripPage() {
     }
     setError(null); // Clear previous errors
 
+    // Require that user selects at least an outbound travel option first
+    if (!outboundCost && !returnCost) {
+      setError('Please generate and select travel options first.');
+      return;
+    }
+
     setLoading(true); // Start loading animation
     
     const tripDetails = {
@@ -95,18 +110,32 @@ export default function PlanTripPage() {
       to,
       startDate,
       deadline,
-      budget: Number(budget), // Ensure budget is a number
+      budget: Number(budget), // Ensure budget is a number (original total)
+      // include selected travel choices and costs so backend can adjust itinerary
+      travelSelection: {
+        outboundId: selectedOutbound,
+        returnId: selectedReturn,
+        outboundCost: outboundCost ?? 0,
+        returnCost: returnCost ?? 0,
+      },
+      budgetRemaining: (() => {
+        const init = Number(budget);
+        const sideSum = sideLocations.reduce((s, loc) => s + (loc.budget || 0), 0);
+        return Math.max(0, init - (outboundCost ?? 0) - (returnCost ?? 0) - sideSum);
+      })(),
       avoidNightTravel,
       includeLayovers,
       userID,
       selectedMode, // Pass this to backend if your API uses it for filtering
+      sideLocations: sideLocations, // Include side locations for multi-destination trips
     };
 
     // --- Log data being passed to backend ---
     console.log("Data being sent to backend:", tripDetails);
 
     try {
-      const res = await fetch('http://localhost:5000/api/trips/generate', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const res = await fetch(`${API_URL}/api/trips/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tripDetails),
@@ -133,6 +162,81 @@ export default function PlanTripPage() {
       setLoading(false); // Stop loading animation regardless of success or failure
     }
   };
+
+  // --- New: Local planner UI helpers ---
+  // Generate travel options heuristically (can be replaced by backend API later)
+  const generateBudgetOptions = () => {
+    const b = Number(budget);
+    if (!b || b <= 0) return;
+    const optA = { id: 'a_quarter', label: 'Economy (1/4 budget)', cost: Math.round(b / 4) };
+    const optB = { id: 'a_third', label: 'Comfort (1/3 budget)', cost: Math.round(b / 3) };
+    setOutboundOptions([optA, optB]);
+    setReturnOptions([optA, optB]);
+    setInitialBudgetNumber(b);
+    setSelectedOutbound(null);
+    setSelectedReturn(null);
+    setOutboundCost(null);
+    setReturnCost(null);
+  };
+
+  const selectOption = (which: 'outbound' | 'return', id: string) => {
+    const opts = which === 'outbound' ? outboundOptions : returnOptions;
+    const opt = opts.find(o => o.id === id);
+    if (!opt) return;
+    if (which === 'outbound') {
+      setSelectedOutbound(id);
+      setOutboundCost(opt.cost);
+    } else {
+      setSelectedReturn(id);
+      setReturnCost(opt.cost);
+    }
+  };
+
+  const addSideLocation = (name: string, days: number) => {
+    if (!name) return;
+    const newLoc = { name, days, budget: undefined };
+    setSideLocations(prev => [...prev, newLoc]);
+  };
+
+  const assignBudgetToSide = (index: number, amount: number) => {
+    // cap amount to allowed maximum for this index
+    const maxAlloc = (() => {
+      const init = initialBudgetNumber ?? 0;
+      const otherSum = sideLocations.reduce((s, loc, i) => s + (i === index ? 0 : (loc.budget || 0)), 0);
+      return Math.max(0, init - travelSum() - otherSum);
+    })();
+    const capped = Math.max(0, Math.min(amount, maxAlloc));
+    setSideLocations(prev => prev.map((s, i) => i === index ? { ...s, budget: capped } : s));
+  };
+
+  const travelSum = () => (outboundCost || 0) + (returnCost || 0);
+  const sumSideBudgets = () => sideLocations.reduce((s, loc) => s + (loc.budget || 0), 0);
+
+  const getMaxAlloc = (index: number) => {
+    const init = initialBudgetNumber ?? 0;
+    const otherSum = sideLocations.reduce((s, loc, i) => s + (i === index ? 0 : (loc.budget || 0)), 0);
+    return Math.max(0, init - travelSum() - otherSum);
+  };
+
+  // Ensure allocations are clamped when budget or travel selection changes
+  React.useEffect(() => {
+    if (initialBudgetNumber === null) return;
+    setSideLocations(prev => prev.map((s, i) => {
+      const otherSum = prev.reduce((acc, loc, j) => acc + (j === i ? 0 : (loc.budget || 0)), 0);
+      const max = Math.max(0, (initialBudgetNumber ?? 0) - travelSum() - otherSum);
+      if ((s.budget || 0) > max) return { ...s, budget: max };
+      return s;
+    }));
+  }, [initialBudgetNumber, outboundCost, returnCost]);
+
+  const travelBookingLink = (fromLoc: string, toLoc: string) => {
+    return `https://www.google.com/travel/flights?q=${encodeURIComponent(fromLoc + ' to ' + toLoc)}`;
+  };
+
+  const hotelSearchLink = (loc: string) => {
+    return `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(loc)}`;
+  };
+  // -------------------------------
 
   return (
     <div
@@ -185,6 +289,113 @@ export default function PlanTripPage() {
             <TravelMode label="Flights" selected={selectedMode === "Flights"} onClick={() => setSelectedMode("Flights")} iconType="flight" />
             <TravelMode label="Trains" selected={selectedMode === "Trains"} onClick={() => setSelectedMode("Trains")} iconType="train" />
             <TravelMode label="Buses" selected={selectedMode === "Buses"} onClick={() => setSelectedMode("Buses")} iconType="bus" />
+
+            {/* Budget split and travel options */}
+            <div className="px-4 pt-6">
+              <h3 className="text-site font-semibold">Budget & Travel Options</h3>
+              <p className="text-muted text-sm">Total budget: ₹{budget || '—'}</p>
+              <div className="flex gap-3 mt-3">
+                <button onClick={generateBudgetOptions} className="btn-primary px-3 py-2 rounded">Generate Options</button>
+                <button onClick={() => { setOutboundOptions([]); setReturnOptions([]); setRemainingBudget(null); setSelectedOutbound(null); setSelectedReturn(null); }} className="px-3 py-2 rounded bg-card">Reset</button>
+              </div>
+
+              {initialBudgetNumber !== null && (
+                <p className="text-site mt-3">Remaining budget: ₹{(() => {
+                  const sideSum = sideLocations.reduce((s, loc) => s + (loc.budget || 0), 0);
+                  const travelSum = (outboundCost || 0) + (returnCost || 0);
+                  return Math.max(0, initialBudgetNumber - travelSum - sideSum);
+                })()}</p>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <h4 className="text-site font-medium">Outbound Options</h4>
+                  {outboundOptions.length === 0 ? <p className="text-muted">No options yet.</p> : outboundOptions.map(opt => (
+                    <div key={opt.id} className={`flex items-center justify-between p-3 rounded-lg mt-2 ${selectedOutbound === opt.id ? 'border-2 border-primary' : 'bg-card'}`}>
+                      <div>
+                        <div className="text-site font-semibold">{opt.label}</div>
+                        <div className="text-muted text-sm">Approx cost: ₹{opt.cost}</div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <a href={travelBookingLink(from || '', to || '')} target="_blank" rel="noreferrer" className="text-primary text-sm">Book travel</a>
+                        <button onClick={() => selectOption('outbound', opt.id)} className="px-3 py-1 rounded bg-primary text-black text-sm">Select</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <h4 className="text-site font-medium">Return Options</h4>
+                  {returnOptions.length === 0 ? <p className="text-muted">No options yet.</p> : returnOptions.map(opt => (
+                    <div key={opt.id} className={`flex items-center justify-between p-3 rounded-lg mt-2 ${selectedReturn === opt.id ? 'border-2 border-primary' : 'bg-card'}`}>
+                      <div>
+                        <div className="text-site font-semibold">{opt.label}</div>
+                        <div className="text-muted text-sm">Approx cost: ₹{opt.cost}</div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <a href={travelBookingLink(to || '', from || '')} target="_blank" rel="noreferrer" className="text-primary text-sm">Book travel</a>
+                        <button onClick={() => selectOption('return', opt.id)} className="px-3 py-1 rounded bg-primary text-black text-sm">Select</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Side locations (multi-destination) */}
+              <div className="mt-6">
+                <h3 className="text-site font-semibold">Side Locations / Multi-stop</h3>
+                <SideLocationForm onAdd={addSideLocation} />
+                {sideLocations.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {sideLocations.map((s, idx) => {
+                          const maxAlloc = getMaxAlloc(idx);
+                          const current = s.budget ?? 0;
+                          const totalAfter = (initialBudgetNumber ?? 0) - travelSum() - (sumSideBudgets() - current) - current;
+                          return (
+                            <div key={idx} className="bg-card p-3 rounded">
+                              <div className="flex items-center justify-between mb-2">
+                                <div>
+                                  <div className="text-site font-medium">{s.name} — {s.days} day(s)</div>
+                                  <div className="text-muted text-sm">Assigned budget: ₹{current}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <a href={hotelSearchLink(s.name)} target="_blank" rel="noreferrer" className="text-primary text-sm">Hotels</a>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={maxAlloc}
+                                  value={current}
+                                  onChange={e => assignBudgetToSide(idx, Math.round(Number(e.target.value)))}
+                                  className="flex-1"
+                                  disabled={initialBudgetNumber === null}
+                                />
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={maxAlloc}
+                                  value={current}
+                                  onChange={e => {
+                                    const val = Math.round(Number(e.target.value) || 0);
+                                    const capped = Math.max(0, Math.min(val, maxAlloc));
+                                    assignBudgetToSide(idx, capped);
+                                  }}
+                                  className="w-28 p-1 rounded bg-card text-site"
+                                />
+                                <button onClick={() => { const amt = Math.round(maxAlloc * 0.5); assignBudgetToSide(idx, amt); }} className="px-2 py-1 rounded bg-primary text-black text-sm">Fill 50%</button>
+                              </div>
+
+                              {/* Remaining budget is shown globally above — per-location remainder removed to avoid duplication */}
+                            </div>
+                          );
+                        })}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Submit Button with Loading Spinner */}
               <div className="flex px-4 py-3">
@@ -313,6 +524,28 @@ function TravelMode({ label, selected, onClick, iconType }: TravelModeProps) {
       {selected && (
         <span className="text-primary font-bold ml-2">Selected</span>
       )}
+    </div>
+  );
+}
+
+// --- SideLocationForm Component ---
+function SideLocationForm({ onAdd }: { onAdd: (name: string, days: number) => void }) {
+  const [name, setName] = useState('');
+  const [days, setDays] = useState<number>(1);
+
+  return (
+    <div className="flex gap-2 items-end mt-3">
+      <div className="flex-1">
+        <label className="text-site text-sm">Location</label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Munnar" className="w-full mt-1 p-2 rounded bg-card text-site" />
+      </div>
+      <div className="w-28">
+        <label className="text-site text-sm">Days</label>
+        <input type="number" value={days} min={1} onChange={e => setDays(Number(e.target.value))} className="w-full mt-1 p-2 rounded bg-card text-site" />
+      </div>
+      <div>
+        <button onClick={() => { onAdd(name.trim(), days); setName(''); setDays(1); }} className="px-3 py-2 rounded bg-primary text-black">Add</button>
+      </div>
     </div>
   );
 }

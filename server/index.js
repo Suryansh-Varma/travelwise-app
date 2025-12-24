@@ -3,8 +3,11 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
+const path = require('path');
 
-dotenv.config();
+// Load .env.local first, then fall back to .env
+dotenv.config({ path: path.resolve(__dirname, '.env.local') });
+dotenv.config(); // This will override with .env if it exists
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -36,13 +39,23 @@ app.get('/', (req, res) => {
   res.send('TravelWise API is running...');
 });
 
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
+// Check if MONGO_URI is set
+if (!process.env.MONGO_URI) {
+  console.error('❌ ERROR: MONGO_URI is not set in environment variables!');
+  console.error('Please create a .env.local file in the server directory with MONGO_URI=mongodb://...');
+  process.exit(1);
+}
+
+mongoose.connect(process.env.MONGO_URI)
 .then(() => {
+  console.log('✅ MongoDB connected successfully');
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📍 API available at http://localhost:${PORT}`);
   });
 })
-.catch((err) => console.error('MongoDB connection error:', err));
+.catch((err) => {
+  console.error('❌ MongoDB connection error:', err.message);
+  console.error('Please check your MONGO_URI in .env.local file');
+  process.exit(1);
+});

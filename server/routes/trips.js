@@ -1,49 +1,60 @@
 const express = require('express');
-const Trip = require('../models/Trip'); // Ensure this path is correct relative to this file
+const Trip = require('../models/Trip'); 
 const router = express.Router();
-const generateRoutes = require('../api/trips/generate/trips'); // Adjust path if necessary
+const generateRoutes = require('../api/trips/generate/trips'); 
 
-// This handles requests to /api/trips/generate (e.g., POST requests to plan a new trip)
+// Plan a new trip via AI
 router.use('/generate', generateRoutes);
 
-// Handles POST requests to /api/trips (e.g., if you manually create a single trip)
+// Create a single trip manually
 router.post("/", async (req, res) => {
     try {
-        // --- FIX 1: Change 'userId' to 'userID' to match schema ---
-        const { userID, ...tripData } = req.body; // Expect userID (uppercase ID)
-        if (!userID) { // Check for userID
+        const { userID, ...tripData } = req.body; 
+        if (!userID) {
             return res.status(400).json({ error: "userID is required" });
         }
-        const newTrip = new Trip({ ...tripData, userID }); // Assign to userID
-        // --------------------------------------------------------
+        const newTrip = new Trip({ ...tripData, userID }); 
 
         const savedTrip = await newTrip.save();
         res.status(201).json(savedTrip);
     } catch (error) {
-        console.error("Error creating trip:", error); // Added console.error for better logging
-        res.status(500).json({ error: "Failed to create trip", MessageChannel: error.message });
+        console.error("Error creating trip:", error);
+        res.status(500).json({ error: "Failed to create trip", message: error.message });
     }
 });
 
-// Handles GET requests to /api/trips (e.g., to fetch saved trips)
+// Fetch saved trips for a user
 router.get("/", async (req, res) => {
     try {
-        // --- FIX 2: Change 'userId' to 'userID' to match schema ---
-        const { userID } = req.query; // Extract userID (uppercase ID) from query parameters
+        const { userID } = req.query; 
 
-        // --- FIX 3: Added explicit error for missing userID in GET for clarity ---
         if (!userID) {
-            return res.status(400).json({ error: "userID query parameter is required to fetch user-specific trips." });
+            return res.status(400).json({ error: "userID query parameter is required." });
         }
-        // ----------------------------------------------------------------------
 
-        // Filter by userID and sort by creation date (newest first)
         const trips = await Trip.find({ userID: userID }).sort({ createdAt: -1 });
-        console.log(`Fetched ${trips.length} trips for userID: ${userID}`); // Added log
+        console.log(`Fetched ${trips.length} trips for userID: ${userID}`);
         res.json(trips);
     } catch (err) {
-        console.error("Error fetching trips:", err); // Added console.error for better logging
-        res.status(500).json({ error: "Failed to fetch trips", MessageChannel: err.message });
+        console.error("Error fetching trips:", err);
+        res.status(500).json({ error: "Failed to fetch trips", message: err.message });
+    }
+});
+
+// ADDED: Delete a specific trip
+router.delete("/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deletedTrip = await Trip.findByIdAndDelete(id);
+        
+        if (!deletedTrip) {
+            return res.status(404).json({ error: "Trip not found" });
+        }
+        
+        res.status(200).json({ message: "Trip deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting trip:", error);
+        res.status(500).json({ error: "Failed to delete trip", message: error.message });
     }
 });
 

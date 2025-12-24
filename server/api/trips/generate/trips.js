@@ -1,9 +1,9 @@
 const axios = require('axios');
-const Trip = require('../../../models/Trip'); // Adjust path as needed
+const Trip = require('../../../models/Trip');
 const express = require('express');
 const router = express.Router();
 
-// Helper function to validate and parse date-time strings
+
 function isValidISODateString(str) {
     if (!str) return false;
     const d = new Date(str);
@@ -11,7 +11,7 @@ function isValidISODateString(str) {
 }
 
 router.post('/', async (req, res) => {
-    const { from, to, startDate, deadline, budget, avoidNightTravel, includeLayovers, userID } = req.body;
+    const { from, to, startDate, deadline, budget, avoidNightTravel, includeLayovers, userID, travelSelection, budgetRemaining, sideLocations } = req.body;
 
     // --- Input Validation ---
     if (!from || !to || !startDate || !deadline || !budget || !userID) {
@@ -30,61 +30,52 @@ router.post('/', async (req, res) => {
     }
 
     try {
-        // --- 1. Generate core itinerary using Gemini API ---
-        const geminiPrompt = `Plan a trip from ${from} to ${to} between ${startDate} and ${deadline} with a budget of ₹${budget}.
-Include all possible modes: bus, train, flight, cab, metro, etc.
+        // If client requests a mock run (for testing), skip Gemini and return a simple generated plan
+        if (req.headers['x-mock'] === 'true') {
+            const mockPlan = {
+                from: from,
+                to: to,
+                startDate: new Date(startDate),
+                deadline: new Date(deadline),
+                budget: budget,
+                plan: [
+                    {
+                        mode: 'train',
+                        source: from,
+                        destination: to,
+                        serviceNumber: 'TR123',
+                        departureTime: startDate,
+                        arrivalTime: deadline,
+                        cost: Math.round((Number(budget) || 0) * 0.25),
+                        durationHrs: 6,
+                        layover: null,
+                        bufferMins: 30,
+                        bufferNote: 'Buffer',
+                        availability: 'Available',
+                    }
+                ],
+                warnings: [],
+                userID: userID,
+                totalCost: Math.round((Number(budget) || 0) * 0.25),
+                travelSelection: travelSelection || {},
+                budgetRemaining: typeof budgetRemaining === 'number' ? budgetRemaining : (Number(budget) - Math.round((Number(budget) || 0) * 0.25)),
+                sideLocations: Array.isArray(sideLocations) ? sideLocations : [],
+            };
+            const saved = await Trip.create(mockPlan);
+            return res.status(201).json([saved]);
+        }
+        const selectedTravelText = travelSelection ? `User selected travel options: Outbound=${travelSelection.outboundId || 'N/A'} (cost ₹${travelSelection.outboundCost || 0}), Return=${travelSelection.returnId || 'N/A'} (cost ₹${travelSelection.returnCost || 0}).` : '';
+        const sideLocationsText = Array.isArray(sideLocations) && sideLocations.length > 0 ? `User wants to visit side locations: ${sideLocations.map(s => `${s.name} (${s.days} days, allocated ₹${s.budget||0})`).join('; ')}.` : '';
 
-Always include routes via all possible major hubs (e.g., Hyderabad, Mumbai, Chennai, etc.) and break the journey into multiple legs. Prioritize presenting diverse options (e.g., fastest, cheapest, specific mode combinations). For each leg, include layover time at the hub if applicable.
+                const geminiPrompt = `Plan a trip from ${from} to ${to} between ${startDate} and ${deadline}. ${selectedTravelText} ${sideLocationsText} The user's ORIGINAL total budget is ₹${budget}. The user has ₹${budgetRemaining ?? 'unknown'} remaining (after chosen travel and side allocations) to spend on hotels, activities and local transport — plan accommodation and side activities accordingly. Provide multiple travel+stay options and include hotel suggestions with publicly accessible booking links (e.g., Booking.com) and approximate nightly costs. Be realistic with costs and durations for Indian travel. Include at least 2 distinct itinerary options that fit within the remaining budget for hotels/activities (if a remaining budget is provided). Each option should contain travel legs, hotels, estimated costs per night, and a brief rationale. Return ONLY a JSON array of plan objects (no extra text).`;
 
-Provide **at least 2-3 distinct travel options/plans**. Each plan should be a complete itinerary.
-
-**Return ONLY a JSON array, where each element is a JSON object representing a complete travel plan. Do NOT include any additional text, markdown, or explanation outside of the JSON array.**
-
-Example of the expected JSON ARRAY structure:
-\`\`\`json
-[
-  {
-    "from": "String",
-    "to": "String",
-    "startDate": "String (ISO 8601 date, e.g., YYYY-MM-DD)",
-    "deadline": "String (ISO 8601 date, e.g., YYYY-MM-DD)",
-    "budget": "Number (in ₹)",
-    "plan": [
-      {
-        "mode": "String",
-        "source": "String",
-        "destination": "String",
-        "serviceNumber": "String or null",
-        "departureTime": "String (ISO 8601 format)",
-        "arrivalTime": "String (ISO 8601 format)",
-        "cost": "Number",
-        "durationHrs": "Number",
-        "layover": "String or null",
-        "bufferMins": "Number or null",
-        "bufferNote": "String or null",
-        "availability": "String",
-        "warnings": "Array of strings or null"
-      }
-    ],
-    "warnings": "Array of strings (overall plan warnings for this specific option)",
-    "userID": "String",
-    "totalCost": "Number (sum of costs for this specific plan)"
-  }
-]
-\`\`\`
-
-Ensure all date-time strings within the 'plan' array are in ISO 8601 format including timezone offset, and 'startDate'/'deadline' are YYYY-MM-DD. Be realistic with costs and durations for Indian travel.
-`;
-
-        // Prefer using Google service account (short-lived access token). If not available, fall back to API key.
-        const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
+        const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`;
         const geminiBody = { contents: [{ parts: [{ text: geminiPrompt }] }] };
 
-        // Build axios config with either Authorization header (Bearer) or API key param
         const axiosConfig = { headers: { 'Content-Type': 'application/json' } };
 
         try {
-            // Attempt to obtain Application Default Credentials access token
             const { GoogleAuth } = require('google-auth-library');
             const auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
             const client = await auth.getClient();
@@ -92,22 +83,51 @@ Ensure all date-time strings within the 'plan' array are in ISO 8601 format incl
             const accessToken = tokenResponse && (tokenResponse.token || tokenResponse);
             if (accessToken) {
                 axiosConfig.headers.Authorization = `Bearer ${accessToken}`;
+                console.log('Using Google service account authentication for Gemini API');
             } else if (process.env.GEMINI_API_KEY) {
                 axiosConfig.params = { key: process.env.GEMINI_API_KEY };
+                console.log('Using GEMINI_API_KEY for authentication');
             } else {
-                throw new Error('No access token obtained and no GEMINI_API_KEY configured.');
+                throw new Error('No access token obtained and no GEMINI_API_KEY configured. Please set GEMINI_API_KEY in your .env.local file.');
             }
         } catch (authErr) {
             // If google-auth-library is not configured or fails, fall back to API key if present
             if (process.env.GEMINI_API_KEY) {
                 axiosConfig.params = { key: process.env.GEMINI_API_KEY };
+                console.log('Falling back to GEMINI_API_KEY after service account auth failed');
             } else {
                 console.error('Auth error obtaining Google access token:', authErr.message);
-                throw new Error('Could not obtain Google access token and GEMINI_API_KEY is not set.');
+                throw new Error('Could not obtain Google access token and GEMINI_API_KEY is not set. Please set GEMINI_API_KEY in your .env.local file.');
             }
         }
 
-        const geminiResponse = await axios.post(geminiUrl, geminiBody, axiosConfig);
+        let geminiResponse;
+        try {
+            geminiResponse = await axios.post(geminiUrl, geminiBody, axiosConfig);
+        } catch (apiError) {
+            // Handle API errors with more detail
+            if (apiError.response) {
+                const status = apiError.response.status;
+                const errorData = apiError.response.data;
+                console.error('Gemini API Error:', {
+                    status,
+                    statusText: apiError.response.statusText,
+                    data: errorData
+                });
+                
+                if (status === 403) {
+                    throw new Error(`Gemini API returned 403 Forbidden. This usually means: 1) Your API key is invalid or expired, 2) API key doesn't have access to Gemini API, 3) API key has restrictions. Check your GEMINI_API_KEY in .env.local. Error details: ${JSON.stringify(errorData)}`);
+                } else if (status === 401) {
+                    throw new Error(`Gemini API returned 401 Unauthorized. Your API key is invalid or missing. Check your GEMINI_API_KEY in .env.local.`);
+                } else if (status === 404) {
+                    throw new Error(`Gemini API returned 404 Not Found. The model 'gemini-2.5-pro' might not be available. Try using 'gemini-pro' instead.`);
+                } else {
+                    throw new Error(`Gemini API error (${status}): ${JSON.stringify(errorData)}`);
+                }
+            } else {
+                throw new Error(`Failed to connect to Gemini API: ${apiError.message}`);
+            }
+        }
 
         let parsedTripPlans; // This will now be an array of plan objects
         const geminiOutput = geminiResponse.data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -245,31 +265,45 @@ Ensure all date-time strings within the 'plan' array are in ISO 8601 format incl
             }
 
             // --- 4. Prepare the Trip document for this plan ---
-            finalTripDocs.push({
-                from: singleParsedPlan.from || from,
-                to: singleParsedPlan.to || to,
-                startDate: new Date(singleParsedPlan.startDate || startDate),
-                deadline: new Date(singleParsedPlan.deadline || deadline),
-                budget: singleParsedPlan.budget || budget,
-                plan: singleParsedPlan.plan,
-                warnings: overallWarningsForThisPlan,
-                userID: userID, // Assuming userID is common for all plans of this request
-                totalCost: totalCostForThisPlan,
-            });
+finalTripDocs.push({
+    from: singleParsedPlan.from || from,
+    to: singleParsedPlan.to || to,
+    startDate: new Date(singleParsedPlan.startDate || startDate),
+    deadline: new Date(singleParsedPlan.deadline || deadline),
+    budget: singleParsedPlan.budget || budget,
+    
+    // NEW FIELDS FROM GEMINI OUTPUT
+    plan_name: singleParsedPlan.plan_name,
+    plan_rationale: singleParsedPlan.plan_rationale,
+    total_cost_accommodation_activities: singleParsedPlan.total_cost_accommodation_activities,
+    
+    // CAPTURING THE DAILY ITINERARY
+    itinerary: singleParsedPlan.itinerary || [], 
+
+    // YOUR EXISTING FIELDS
+    plan: singleParsedPlan.plan,
+    warnings: overallWarningsForThisPlan,
+    userID: userID,
+    totalCost: totalCostForThisPlan,
+    travelSelection: travelSelection || {},
+    budgetRemaining: typeof budgetRemaining === 'number' ? budgetRemaining : (budget - totalCostForThisPlan),
+    sideLocations: Array.isArray(sideLocations) ? sideLocations : [],
+});
         }
 
         // --- 5. Save all generated plans to MongoDB ---
         // Option A: Save each plan as a separate document in the 'trips' collection
+        let savedTrips = [];
         if (finalTripDocs.length > 0) {
-            await Trip.insertMany(finalTripDocs); // Requires mongoose's insertMany
+            savedTrips = await Trip.insertMany(finalTripDocs); // Requires mongoose's insertMany - returns saved documents with _id and timestamps
         } else {
             // Handle case where no plans were generated
             return res.status(200).json({ message: "No suitable travel plans could be generated." });
         }
 
 
-        // --- 6. Return all generated plans to frontend ---
-        res.status(201).json(finalTripDocs);
+        // --- 6. Return all generated plans to frontend (with _id and timestamps from database) ---
+        res.status(201).json(savedTrips);
 
     } catch (error) {
         console.error('Error generating or saving itineraries:', error.response ? error.response.data : error.message);

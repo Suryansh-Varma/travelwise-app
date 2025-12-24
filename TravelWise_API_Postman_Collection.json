@@ -1,0 +1,236 @@
+{
+	"info": {
+		"name": "TravelWise API",
+		"description": "API collection for TravelWise travel planning application",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "5000",
+					"path": [""]
+				}
+			}
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Sign Up",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"John Doe\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:5000/api/auth/sign-up/email",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "auth", "sign-up", "email"]
+						}
+					}
+				},
+				{
+					"name": "Sign In",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"remember\": true\n}"
+						},
+						"url": {
+							"raw": "http://localhost:5000/api/auth/sign-in/email",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "auth", "sign-in", "email"]
+						}
+					}
+				},
+				{
+					"name": "Get Current User",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{sessionToken}}",
+								"description": "Get this from sign-in response"
+							}
+						],
+						"url": {
+							"raw": "http://localhost:5000/api/auth/me",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "auth", "me"]
+						}
+					}
+				},
+				{
+					"name": "Verify Email",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:5000/api/auth/verify-email?token=VERIFICATION_TOKEN",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "auth", "verify-email"],
+							"query": [
+								{
+									"key": "token",
+									"value": "VERIFICATION_TOKEN"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Trips",
+			"item": [
+				{
+					"name": "Generate Itinerary",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "x-mock",
+								"value": "false",
+								"description": "Set to 'true' to skip Gemini API and return mock data"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from\": \"Mumbai\",\n  \"to\": \"Delhi\",\n  \"startDate\": \"2024-12-20T10:00:00Z\",\n  \"deadline\": \"2024-12-25T18:00:00Z\",\n  \"budget\": 50000,\n  \"userID\": \"user-id-here\",\n  \"avoidNightTravel\": false,\n  \"includeLayovers\": true,\n  \"travelSelection\": {\n    \"outboundId\": \"a_quarter\",\n    \"returnId\": \"a_third\",\n    \"outboundCost\": 12500,\n    \"returnCost\": 16667\n  },\n  \"budgetRemaining\": 20833,\n  \"sideLocations\": [\n    {\n      \"name\": \"Agra\",\n      \"days\": 2,\n      \"budget\": 5000\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:5000/api/trips/generate",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "trips", "generate"]
+						}
+					}
+				},
+				{
+					"name": "Generate Itinerary (Mock - No Gemini)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "x-mock",
+								"value": "true",
+								"description": "Skip Gemini API"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from\": \"Mumbai\",\n  \"to\": \"Delhi\",\n  \"startDate\": \"2024-12-20T10:00:00Z\",\n  \"deadline\": \"2024-12-25T18:00:00Z\",\n  \"budget\": 50000,\n  \"userID\": \"user-id-here\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:5000/api/trips/generate",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "trips", "generate"]
+						}
+					}
+				},
+				{
+					"name": "Get User Trips",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{sessionToken}}"
+							}
+						],
+						"url": {
+							"raw": "http://localhost:5000/api/trips?userID=user-id-here",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "trips"],
+							"query": [
+								{
+									"key": "userID",
+									"value": "user-id-here"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Trip Manually",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userID\": \"user-id-here\",\n  \"from\": \"Mumbai\",\n  \"to\": \"Delhi\",\n  \"startDate\": \"2024-12-20T10:00:00Z\",\n  \"deadline\": \"2024-12-25T18:00:00Z\",\n  \"budget\": 50000,\n  \"totalCost\": 45000,\n  \"plan\": [\n    {\n      \"mode\": \"flight\",\n      \"source\": \"Mumbai\",\n      \"destination\": \"Delhi\",\n      \"serviceNumber\": \"AI-101\",\n      \"departureTime\": \"2024-12-20T10:00:00Z\",\n      \"arrivalTime\": \"2024-12-20T12:00:00Z\",\n      \"cost\": 15000,\n      \"durationHrs\": 2,\n      \"layover\": null,\n      \"bufferMins\": 90,\n      \"bufferNote\": \"Airport check-in\",\n      \"availability\": \"Available\"\n    }\n  ],\n  \"warnings\": []\n}"
+						},
+						"url": {
+							"raw": "http://localhost:5000/api/trips",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "5000",
+							"path": ["api", "trips"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5000",
+			"type": "string"
+		},
+		{
+			"key": "sessionToken",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
+

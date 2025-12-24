@@ -1,48 +1,35 @@
 const mongoose = require('mongoose');
 
 const TripSchema = new mongoose.Schema({
-  from: {
-    type: String,
-    required: true,
-  },
-  to: {
-    type: String,
-    required: true,
-  },
-  startDate: {
-    type: Date,
-    required: true,
-  },
-  deadline: {
-    type: Date,
-    required: true,
-  },
-  budget: {
-    type: Number,
-    required: true,
-  },
-  plan: [
-    {
-      mode: String,
-      source: String,
-      destination: String,
-      serviceNumber: String,
-      departureTime: String,
-      arrivalTime: String,
-      cost: Number,
-      durationHrs: Number,
-      layover: String,
-      bufferMins: Number,
-      bufferNote: String,
-      availability: String,
+  from: String,
+  to: String,
+  startDate: Date,
+  deadline: Date,
+  budget: Number,
+  userID: String,
+  plan_name: String,
+  plan_rationale: String, // Maps to 'rationale' in Gemini output
+  
+  itinerary: [{
+    day: Number,
+    date: String,
+    theme: String,      // Added to match latest Gemini output
+    activities: [String],
+    accommodation: {
+      name: String,
+      location: String,
+      estimated_cost_inr: Number,
+      booking_link: String
     }
-  ],
+  }],
+
+  // Logistics
+  travelSelection: { outboundCost: Number, returnCost: Number, outboundId: String, returnId: String },
+  budgetRemaining: Number,
+  sideLocations: [{ name: String, days: Number, budget: Number }],
+  plan: [mongoose.Schema.Types.Mixed], // Flexible array for transport legs
   warnings: [String],
-  userID: {
-    type: String,
-    required: true,
-  },
-  totalCost: Number, 
+  totalCost: Number
 }, { timestamps: true });
 
 module.exports = mongoose.model('Trip', TripSchema);
