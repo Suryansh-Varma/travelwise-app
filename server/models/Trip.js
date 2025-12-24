@@ -14,7 +14,13 @@ const TripSchema = new mongoose.Schema({
     day: Number,
     date: String,
     theme: String,      // Added to match latest Gemini output
-    activities: [String],
+    activities: [
+  {
+    description: String,
+    est_cost: Number,
+    notes: String
+  }
+],
     accommodation: {
       name: String,
       location: String,
