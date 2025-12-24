@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface TripData {
   plan_name: string;
@@ -7,8 +7,8 @@ interface TripData {
   from: string;
   to: string;
   budget: number;
-  totalCost: number; // Transport total
-  total_cost_accommodation_activities: number; // Stay/Activities total
+  totalCost: number;
+  total_cost_accommodation_activities: number;
   budgetRemaining: number;
   itinerary: Array<{
     day: number;
@@ -31,13 +31,33 @@ interface TripData {
   }>;
 }
 
-export default function TripDashboard({ trip }: { trip: TripData }) {
+export default function DashboardPage() {
+  const [trip, setTrip] = useState<TripData | null>(null);
+
+  useEffect(() => {
+    // 1. Get data from localStorage where your previous page saved it
+    const savedData = localStorage.getItem('lastGeneratedTrips');
+    if (savedData) {
+      const parsed = JSON.parse(savedData);
+      // If the backend returned an array, we take the first item
+      setTrip(Array.isArray(parsed) ? parsed[0] : parsed);
+    }
+  }, []);
+
+  if (!trip) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-site">
+        <p className="text-white text-lg">Loading your itinerary...</p>
+      </div>
+    );
+  }
+
   // Calculations for the progress bar
   const totalSpent = trip.totalCost + trip.total_cost_accommodation_activities;
   const usagePercentage = Math.min((totalSpent / trip.budget) * 100, 100);
 
   return (
-    <div className="flex flex-col w-full max-w-4xl mx-auto py-10 px-4 space-y-8 animate-fade-up">
+    <div className="flex flex-col w-full max-w-4xl mx-auto py-10 px-4 space-y-8 animate-fade-up min-h-screen">
       
       {/* --- HEADER SECTION --- */}
       <div className="space-y-2">
@@ -109,8 +129,7 @@ export default function TripDashboard({ trip }: { trip: TripData }) {
         
         {trip.itinerary.map((day) => (
           <div key={day.day} className="relative pl-10 border-l-2 border-white/10 pb-8 last:pb-0">
-            {/* Timeline Dot */}
-            <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-primary border-4 border-site shadow-[0_0_15px_rgba(204,255,0,0.5)]" />
+            <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-primary border-4 border-[#0a0a0a] shadow-[0_0_15px_rgba(204,255,0,0.5)]" />
             
             <div className="bg-card p-6 rounded-2xl border border-white/5 space-y-4">
               <div className="flex justify-between items-start">
@@ -129,15 +148,15 @@ export default function TripDashboard({ trip }: { trip: TripData }) {
                 ))}
               </ul>
 
-              {/* ESTIMATED COST BOX */}
-              {day.accommodation.name !== "N/A" && (
+              {/* ESTIMATED COST BOX (Now pulling exactly from your Mongo data) */}
+              {day.accommodation.name !== "N/A" && day.accommodation.estimated_cost_inr > 0 && (
                 <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/5 flex justify-between items-center">
                   <div>
-                    <p className="text-[10px] text-muted uppercase">Stay Accommodation</p>
+                    <p className="text-[10px] text-muted uppercase font-bold">Recommended Stay</p>
                     <p className="text-sm text-white font-medium">{day.accommodation.name}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] text-muted uppercase">Est. Cost</p>
+                    <p className="text-[10px] text-muted uppercase font-bold">Est. Cost</p>
                     <p className="text-md font-black text-primary">₹{day.accommodation.estimated_cost_inr}</p>
                   </div>
                 </div>
